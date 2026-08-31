@@ -2,7 +2,24 @@ node-id: ro-1
 region: eu
 shared-zone-radius: 96
 
+network:
+  # direct-first: use node-to-node links normally; relay only when needed.
+  # relay-only: force relay for debugging/compatibility.
+  # peer-to-peer: never use relay; unsafe shared mutations must fail closed on partitions.
+  mode: direct-first
+  probes:
+    interval-seconds: 5
+    timeout-millis: 1500
+  routing:
+    relay-minimum-improvement-ms: 15.0
+  owner-election:
+    minimum-improvement-ms: 15.0
+    candidate-hold-seconds: 10
+    owner-cooldown-seconds: 30
+
+# Optional fallback/witness relay. It is not intended to be in the hot path normally.
 relay:
+  enabled: false
   host: 127.0.0.1
   port: 25580
 
@@ -17,8 +34,9 @@ voice:
   normal-distance: 48.0
   whisper-distance: 24.0
   world-map: {}
+  # Current voice prototype can still use the optional relay. Direct voice fabric is planned.
   relay:
-    enabled: true
+    enabled: false
     host: 127.0.0.1
     port: 25581
     bind-port: 0
