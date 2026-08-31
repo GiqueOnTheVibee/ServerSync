@@ -3,11 +3,13 @@ package dev.serversync.paper.network;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.BiConsumer;
 import java.util.logging.Logger;
 
 public final class RelayPoolManager implements AutoCloseable {
@@ -15,13 +17,16 @@ public final class RelayPoolManager implements AutoCloseable {
     private final FileConfiguration config;
     private final byte[] rootSecret;
     private final Logger logger;
+    private final BiConsumer<String, byte[]> dataHandler;
     private final Map<String, RelayClient> clients = new LinkedHashMap<>();
 
-    public RelayPoolManager(String nodeId, FileConfiguration config, byte[] rootSecret, Logger logger) {
+    public RelayPoolManager(String nodeId, FileConfiguration config, byte[] rootSecret, Logger logger,
+                            BiConsumer<String, byte[]> dataHandler) {
         this.nodeId = nodeId;
         this.config = config;
         this.rootSecret = rootSecret;
         this.logger = logger;
+        this.dataHandler = dataHandler;
     }
 
     public void start() {
@@ -55,7 +60,7 @@ public final class RelayPoolManager implements AutoCloseable {
             }
 
             RelayClient client = new RelayClient(nodeId, relayId, new InetSocketAddress(host, port), rootSecret,
-                    Duration.ofMillis(connectTimeout), Duration.ofSeconds(pingInterval), logger::info);
+                    Duration.ofMillis(connectTimeout), Duration.ofSeconds(pingInterval), logger::info, dataHandler);
             try {
                 client.start();
                 clients.put(relayId, client);
@@ -70,6 +75,21 @@ public final class RelayPoolManager implements AutoCloseable {
         } else {
             logger.info("Connected gameplay relays: " + String.join(", ", clients.keySet()));
         }
+    }
+
+    public int broadcast(byte[] payload) {
+        int sent = 0;
+        for (Map.Entry<String, RelayClient> entry : clients.entrySet()) {
+            RelayClient client = entry.getValue();
+            if (!client.isConnected()) continue;
+            try {
+                client.broadcast(payload);
+                sent++;
+            } catch (IOException ex) {
+                logger.warning("Could not broadcast through relay " + entry.getKey() + ": " + ex.getMessage());
+            }
+        }
+        return sent;
     }
 
     public Map<String, RelayClient> clients() {
