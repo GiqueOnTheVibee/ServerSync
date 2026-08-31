@@ -1,0 +1,29 @@
+# ServerSync standalone relay configuration.
+# 0.0.0.0 below is a bind address, not a public relay IP.
+relay:
+  id: relay-1
+  region: unknown
+
+network:
+  gameplay:
+    enabled: true
+    bind-host: 0.0.0.0
+    port: 25580
+    max-connections: 256
+    auth-timeout-millis: 5000
+    max-payload-bytes: 1048576
+
+security:
+  # Reuse Velocity's forwarding.secret as the root of trust.
+  # If the relay is on another machine, copy forwarding.secret next to the relay JAR.
+  mode: velocity-secret
+  secret-file: forwarding.secret
+  timestamp-tolerance-seconds: 30
+  replay-cache-seconds: 60
+  allowed-node-ids: []
+
+voice:
+  enabled: true
+  bind-host: 0.0.0.0
+  port: 25581
+  node-timeout-seconds: 15
