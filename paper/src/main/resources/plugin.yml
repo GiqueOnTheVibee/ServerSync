@@ -4,3 +4,4 @@ main: world.marchoflegacy.serversync.paper.ServerSyncPaperPlugin
 api-version: '1.21'
 authors: [MarchOfLegacy]
 description: Multi-region synchronization prototype for Paper/Purpur.
+softdepend: [voicechat]
