@@ -4,4 +4,4 @@ main: dev.serversync.paper.ServerSyncPaperPlugin
 api-version: '1.21'
 authors: [ServerSync]
 description: Multi-region synchronization prototype for Paper/Purpur.
-softdepend: [voicechat]
+softdepend: [voicechat, packetevents]
