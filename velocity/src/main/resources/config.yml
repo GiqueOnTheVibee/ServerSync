@@ -1,0 +1,8 @@
+# ServerSync Velocity configuration.
+security:
+  mode: velocity-secret
+  secret-file: forwarding.secret
+
+routing:
+  enabled: true
+  prefer-lowest-latency: true
