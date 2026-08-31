@@ -21,29 +21,29 @@ jobs:
           cache: maven
       - name: Build deployable jars
         run: mvn -B -ntp clean package
-      - name: Prepare test3 files
+      - name: Prepare test4 files
         run: |
           mkdir -p dist relay-package
-          cp paper/target/serversync-paper-0.1.0-SNAPSHOT.jar dist/ServerSync-Paper-0.1.0-test3.jar
-          cp velocity/target/serversync-velocity-0.1.0-SNAPSHOT.jar dist/ServerSync-Velocity-0.1.0-test3.jar
-          cp relay/target/serversync-relay-0.1.0-SNAPSHOT.jar dist/ServerSync-Relay-0.1.0-test3.jar
-          cp dist/ServerSync-Relay-0.1.0-test3.jar relay-package/ServerSync-Relay-0.1.0-test3.jar
+          cp paper/target/serversync-paper-0.1.0-SNAPSHOT.jar dist/ServerSync-Paper-0.1.0-test4.jar
+          cp velocity/target/serversync-velocity-0.1.0-SNAPSHOT.jar dist/ServerSync-Velocity-0.1.0-test4.jar
+          cp relay/target/serversync-relay-0.1.0-SNAPSHOT.jar dist/ServerSync-Relay-0.1.0-test4.jar
+          cp dist/ServerSync-Relay-0.1.0-test4.jar relay-package/ServerSync-Relay-0.1.0-test4.jar
           cp relay/config.yml relay-package/config.yml
           cp relay/start.bat relay-package/start.bat
-          (cd relay-package && zip -q -r ../dist/ServerSync-Relay-0.1.0-test3.zip .)
+          (cd relay-package && zip -q -r ../dist/ServerSync-Relay-0.1.0-test4.zip .)
           sha256sum dist/*.jar dist/*.zip > dist/SHA256SUMS.txt
       - name: Create GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.1.0-test3 \
-            dist/ServerSync-Paper-0.1.0-test3.jar \
-            dist/ServerSync-Velocity-0.1.0-test3.jar \
-            dist/ServerSync-Relay-0.1.0-test3.jar \
-            dist/ServerSync-Relay-0.1.0-test3.zip \
+          gh release create v0.1.0-test4 \
+            dist/ServerSync-Paper-0.1.0-test4.jar \
+            dist/ServerSync-Velocity-0.1.0-test4.jar \
+            dist/ServerSync-Relay-0.1.0-test4.jar \
+            dist/ServerSync-Relay-0.1.0-test4.zip \
             dist/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "ServerSync 0.1.0 test build 3" \
+            --title "ServerSync 0.1.0 test build 4" \
             --prerelease \
-            --notes "Private experimental test build. Adds standalone relay config.yml startup, normal Windows start.bat, TCP 25580 authenticated gameplay/control relay, UDP 25581 encrypted voice relay, Velocity-forwarding-secret based key derivation, replay-protected HMAC authentication, optional node allowlists, and a Paper multi-relay connection pool with RTT probes. Includes a relay ZIP with the JAR, config.yml and start.bat. Not production-ready."
+            --notes "Private experimental test build. First real PacketEvents player-ghost MVP: authenticated relay DATA/BROADCAST delivery, binary ghost state protocol, remote player-shaped ghost rendering with skin/profile textures, periodic movement updates, despawn/timeout handling, and an optional local self-mirror debug mode so ghost rendering can be tested on one Paper server. Paper ghost rendering requires PacketEvents 2.13.0. Relay still uses TCP 25580 for gameplay/control and UDP 25581 for voice. Direct Paper-to-Paper gameplay transport, interpolation, equipment/animations and authoritative gameplay synchronization are not implemented yet."
