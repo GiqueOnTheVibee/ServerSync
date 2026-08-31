@@ -21,29 +21,29 @@ jobs:
           cache: maven
       - name: Build deployable jars
         run: mvn -B -ntp clean package
-      - name: Prepare test5 files
+      - name: Prepare test6 files
         run: |
           mkdir -p dist relay-package
-          cp paper/target/serversync-paper-0.1.0-SNAPSHOT.jar dist/ServerSync-Paper-0.1.0-test5.jar
-          cp velocity/target/serversync-velocity-0.1.0-SNAPSHOT.jar dist/ServerSync-Velocity-0.1.0-test5.jar
-          cp relay/target/serversync-relay-0.1.0-SNAPSHOT.jar dist/ServerSync-Relay-0.1.0-test5.jar
-          cp dist/ServerSync-Relay-0.1.0-test5.jar relay-package/ServerSync-Relay-0.1.0-test5.jar
+          cp paper/target/serversync-paper-0.1.0-SNAPSHOT.jar dist/ServerSync-Paper-0.1.0-test6.jar
+          cp velocity/target/serversync-velocity-0.1.0-SNAPSHOT.jar dist/ServerSync-Velocity-0.1.0-test6.jar
+          cp relay/target/serversync-relay-0.1.0-SNAPSHOT.jar dist/ServerSync-Relay-0.1.0-test6.jar
+          cp dist/ServerSync-Relay-0.1.0-test6.jar relay-package/ServerSync-Relay-0.1.0-test6.jar
           cp relay/config.yml relay-package/config.yml
           cp relay/start.bat relay-package/start.bat
-          (cd relay-package && zip -q -r ../dist/ServerSync-Relay-0.1.0-test5.zip .)
+          (cd relay-package && zip -q -r ../dist/ServerSync-Relay-0.1.0-test6.zip .)
           sha256sum dist/*.jar dist/*.zip > dist/SHA256SUMS.txt
       - name: Create GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.1.0-test5 \
-            dist/ServerSync-Paper-0.1.0-test5.jar \
-            dist/ServerSync-Velocity-0.1.0-test5.jar \
-            dist/ServerSync-Relay-0.1.0-test5.jar \
-            dist/ServerSync-Relay-0.1.0-test5.zip \
+          gh release create v0.1.0-test6 \
+            dist/ServerSync-Paper-0.1.0-test6.jar \
+            dist/ServerSync-Velocity-0.1.0-test6.jar \
+            dist/ServerSync-Relay-0.1.0-test6.jar \
+            dist/ServerSync-Relay-0.1.0-test6.zip \
             dist/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "ServerSync 0.1.0 test build 5" \
+            --title "ServerSync 0.1.0 test build 6" \
             --prerelease \
-            --notes "Private experimental test build. Fixes Paper startup when Simple Voice Chat is not installed by isolating all optional voicechat API classes behind a runtime bootstrap. ServerSync can now load, generate plugins/ServerSync/config.yml and run ghost tests without Simple Voice Chat. Keeps the PacketEvents player-ghost MVP from test4, authenticated relay DATA/BROADCAST transport, TCP 25580 gameplay relay and UDP 25581 optional voice relay. PacketEvents 2.13.0 is still required for ghost rendering."
+            --notes "Private experimental test build. Adds persistent remote ghost entries to the vanilla client TAB list, configurable TAB display format, correct player-info removal on ghost timeout/despawn, a remote ghost registry, /ssghosts listing, and /sstp <player[@node]> teleport with tab completion. Ghosts remain packet-only visual replicas and are not Bukkit Player objects, so vanilla/third-party commands do not automatically resolve them as online players yet. PacketEvents 2.13.0 is required for ghost rendering."
