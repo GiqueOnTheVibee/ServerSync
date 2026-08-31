@@ -54,7 +54,13 @@ public final class GhostSyncService implements AutoCloseable {
         this.localMirrorEnabled = plugin.getConfig().getBoolean("ghosts.debug-local-mirror.enabled", false);
         this.localMirrorOffsetX = plugin.getConfig().getDouble("ghosts.debug-local-mirror.offset-x", 2.0);
         this.localMirrorOffsetZ = plugin.getConfig().getDouble("ghosts.debug-local-mirror.offset-z", 0.0);
-        this.ghostManager = new GhostPlayerManager(nodeId, plugin.getLogger(), debug);
+        this.ghostManager = new GhostPlayerManager(
+                nodeId,
+                plugin.getLogger(),
+                debug,
+                plugin.getConfig().getBoolean("ghosts.tab-list.enabled", true),
+                plugin.getConfig().getString("ghosts.tab-list.format", "%player%"),
+                plugin.getConfig().getInt("ghosts.tab-list.ping", 0));
     }
 
     public void start() {
@@ -62,6 +68,9 @@ public final class GhostSyncService implements AutoCloseable {
         cleanupTask = Bukkit.getScheduler().runTaskTimer(plugin,
                 () -> ghostManager.expireOlderThan(System.currentTimeMillis() - timeoutMillis), 20L, 20L);
         plugin.getLogger().info("Ghost sync enabled at " + (20.0 / publishIntervalTicks) + " updates/sec.");
+        if (plugin.getConfig().getBoolean("ghosts.tab-list.enabled", true)) {
+            plugin.getLogger().info("Remote ghost players are enabled in the client tab list.");
+        }
         if (localMirrorEnabled) {
             plugin.getLogger().warning("ghosts.debug-local-mirror is enabled. Local players will see a test mirror ghost.");
         }
@@ -117,6 +126,18 @@ public final class GhostSyncService implements AutoCloseable {
 
     public int ghostCount() {
         return ghostManager.size();
+    }
+
+    public List<GhostPlayerManager.GhostTarget> ghostTargets() {
+        return ghostManager.targets();
+    }
+
+    public List<GhostPlayerManager.GhostTarget> findGhostTargets(String query) {
+        return ghostManager.findTargets(query);
+    }
+
+    public List<String> ghostTargetSuggestions() {
+        return ghostManager.targetSuggestions();
     }
 
     private void publishAll() {
