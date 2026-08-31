@@ -16,6 +16,7 @@ import java.util.Base64;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 public final class RelayClient implements AutoCloseable {
@@ -29,6 +30,7 @@ public final class RelayClient implements AutoCloseable {
     private final Duration connectTimeout;
     private final Duration pingInterval;
     private final Consumer<String> logger;
+    private final BiConsumer<String, byte[]> dataHandler;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicLong lastRttNanos = new AtomicLong(-1L);
     private final ConcurrentHashMap<String, Long> pendingPings = new ConcurrentHashMap<>();
@@ -39,7 +41,8 @@ public final class RelayClient implements AutoCloseable {
     private Thread pingThread;
 
     public RelayClient(String nodeId, String relayId, InetSocketAddress address, byte[] rootSecret,
-                       Duration connectTimeout, Duration pingInterval, Consumer<String> logger) {
+                       Duration connectTimeout, Duration pingInterval, Consumer<String> logger,
+                       BiConsumer<String, byte[]> dataHandler) {
         this.nodeId = nodeId;
         this.relayId = relayId;
         this.address = address;
@@ -47,6 +50,7 @@ public final class RelayClient implements AutoCloseable {
         this.connectTimeout = connectTimeout;
         this.pingInterval = pingInterval;
         this.logger = logger;
+        this.dataHandler = dataHandler;
     }
 
     public synchronized void start() throws IOException {
@@ -89,6 +93,12 @@ public final class RelayClient implements AutoCloseable {
         sendLine("SEND\t" + targetNodeId + '\t' + encoded);
     }
 
+    public void broadcast(byte[] payload) throws IOException {
+        if (!isConnected()) throw new IOException("Relay " + relayId + " is not connected");
+        String encoded = Base64.getEncoder().encodeToString(payload);
+        sendLine("BROADCAST\t" + encoded);
+    }
+
     private void authenticate(BufferedReader reader, BufferedWriter writer) throws IOException {
         byte[] nonceBytes = new byte[24];
         RANDOM.nextBytes(nonceBytes);
@@ -124,8 +134,20 @@ public final class RelayClient implements AutoCloseable {
                 if (parts.length >= 2 && parts[0].equals("PONG")) {
                     Long started = pendingPings.remove(parts[1]);
                     if (started != null) lastRttNanos.set(System.nanoTime() - started);
+                    continue;
                 }
-                // DATA frames are intentionally left for the gameplay sync transport layer to consume later.
+                if (parts.length == 3 && parts[0].equals("DATA")) {
+                    try {
+                        byte[] payload = Base64.getDecoder().decode(parts[2]);
+                        dataHandler.accept(parts[1], payload);
+                    } catch (IllegalArgumentException ex) {
+                        logger.accept("Relay " + relayId + " sent an invalid DATA frame.");
+                    }
+                    continue;
+                }
+                if (parts.length >= 2 && parts[0].equals("UNAVAILABLE")) {
+                    logger.accept("Relay " + relayId + " reports node unavailable: " + parts[1]);
+                }
             }
         } catch (IOException ex) {
             if (running.get()) logger.accept("Relay " + relayId + " connection closed: " + ex.getMessage());
