@@ -51,6 +51,37 @@ ServerSync supports three architecture modes:
 
 The route selector can compare direct RTT against the two relay legs and only choose the relay when it is unavailable directly or the relay route is materially faster.
 
+## Relay security and ports
+
+The standalone relay now starts from `config.yml`; environment variables are no longer required for normal startup. If no `config.yml` exists, the relay creates one automatically.
+
+Default listeners:
+
+```text
+TCP 25580 = authenticated gameplay/control relay
+UDP 25581 = encrypted Simple Voice Chat relay
+```
+
+The default security mode is:
+
+```yaml
+security:
+  mode: velocity-secret
+  secret-file: forwarding.secret
+```
+
+The same Velocity forwarding secret acts as the root of trust. ServerSync derives separate keys for gameplay authentication and voice encryption, so the raw forwarding secret is not used directly as the wire key. If the relay runs on another machine, copy `forwarding.secret` next to the relay JAR or change `security.secret-file`.
+
+The gameplay relay requires an authenticated HMAC handshake with timestamp and replay protection before a node is accepted. Optional `allowed-node-ids` can further restrict which configured node IDs are accepted even when the correct secret is known.
+
+The relay can be started normally on Windows with the included `relay/start.bat`, or directly with:
+
+```bash
+java -Xms128M -Xmx512M -jar ServerSync-Relay.jar
+```
+
+Multiple relay endpoints can be configured in the Paper plugin under `relays.nodes`. Each relay can expose gameplay, voice and witness capabilities. `0.0.0.0` values in example remote-host fields are placeholders and must be replaced before enabling those connections.
+
 ## Core rules
 
 1. A player has exactly one authoritative game node at a time.
@@ -65,10 +96,10 @@ The route selector can compare direct RTT against the two relay legs and only ch
 
 ## Modules
 
-- `common` - protocol, ownership records, latency-aware owner selection and direct/relay route selection.
-- `paper` - Paper/Purpur plugin skeleton, shared-zone detection, block intents, player-state publishing and voice integration.
+- `common` - protocol, ownership records, latency-aware owner selection, direct/relay route selection and shared-secret key derivation.
+- `paper` - Paper/Purpur plugin skeleton, shared-zone detection, block intents, player-state publishing, authenticated relay pool and voice integration.
 - `velocity` - Velocity plugin skeleton for routing/connection metadata; common networking code is bundled into its JAR.
-- `relay` - optional standalone Java 21 relay/witness service and current voice relay prototype.
+- `relay` - optional standalone Java 21 authenticated relay/witness service and encrypted voice relay.
 - `docs` - architecture, direct-first networking and voice notes.
 
 ## Build
@@ -109,7 +140,11 @@ Implemented/scaffolded:
 - Paper/Purpur plugin JAR;
 - Velocity plugin JAR;
 - standalone relay JAR;
-- Simple Voice Chat relay prototype;
+- relay `config.yml` generation;
+- Velocity-secret based relay authentication;
+- HMAC timestamp/replay-protected gameplay relay handshake;
+- authenticated multi-relay Paper connection pool with RTT pings;
+- encrypted Simple Voice Chat relay using a derived key;
 - zone lease/epoch primitives;
 - atomic in-memory item-claim prototype in relay state;
 - latency-aware Shared Zone owner scoring;
@@ -119,6 +154,7 @@ Implemented/scaffolded:
 Still to implement before real multi-region gameplay:
 
 - authenticated direct node-to-node transport;
+- full gameplay event consumption over the new relay transport;
 - runtime latency probes and distributed metric exchange;
 - full owner handoff state machine with hold/cooldown/epoch fencing;
 - packet-only remote player ghosts;
