@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
 public final class GhostSyncService implements AutoCloseable {
@@ -97,10 +98,10 @@ public final class GhostSyncService implements AutoCloseable {
     }
 
     public void publishRemove(Player player) {
-        long sequence = nextSequence(player.getUniqueId());
-        send(new GhostPlayerRemove(player.getUniqueId(), nodeId, sequence));
+        GhostPlayerRemove remove = new GhostPlayerRemove(player.getUniqueId(), nodeId, nextSequence(player.getUniqueId()));
+        send(remove);
         if (localMirrorEnabled) {
-            ghostManager.remove(mirrorNodeId(), player.getUniqueId(), sequence);
+            ghostManager.remove(mirrorNodeId(), player.getUniqueId(), remove.sequence());
         }
     }
 
@@ -175,15 +176,25 @@ public final class GhostSyncService implements AutoCloseable {
     }
 
     private void send(GhostMessage message) {
+        if (relayPool == null || outbound.isShutdown()) return;
+        final byte[] payload = encode(message);
+        if (payload == null) return;
+        outbound.execute(() -> relayPool.broadcast(payload));
+    }
+
+    private void sendImmediate(GhostMessage message) {
         if (relayPool == null) return;
-        final byte[] payload;
+        byte[] payload = encode(message);
+        if (payload != null) relayPool.broadcast(payload);
+    }
+
+    private byte[] encode(GhostMessage message) {
         try {
-            payload = GhostProtocol.encode(message);
+            return GhostProtocol.encode(message);
         } catch (IOException ex) {
             plugin.getLogger().log(Level.WARNING, "Could not encode ghost message", ex);
-            return;
+            return null;
         }
-        outbound.execute(() -> relayPool.broadcast(payload));
     }
 
     private void apply(GhostMessage message) {
@@ -202,8 +213,25 @@ public final class GhostSyncService implements AutoCloseable {
     public void close() {
         if (publisherTask != null) publisherTask.cancel();
         if (cleanupTask != null) cleanupTask.cancel();
-        for (Player player : Bukkit.getOnlinePlayers()) publishRemove(player);
+
         outbound.shutdown();
+        try {
+            if (!outbound.awaitTermination(1, TimeUnit.SECONDS)) outbound.shutdownNow();
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            outbound.shutdownNow();
+        }
+
+        // Send removals after queued state frames have drained so stale state cannot resurrect a ghost.
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            GhostPlayerRemove remove = new GhostPlayerRemove(
+                    player.getUniqueId(), nodeId, nextSequence(player.getUniqueId()));
+            sendImmediate(remove);
+            if (localMirrorEnabled) {
+                ghostManager.remove(mirrorNodeId(), player.getUniqueId(), remove.sequence());
+            }
+        }
+
         ghostManager.close();
         sequences.clear();
     }
