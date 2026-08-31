@@ -1,8 +1,10 @@
 package dev.serversync.relay;
 
+import dev.serversync.relay.network.GameplayRelayServer;
 import dev.serversync.relay.voice.VoiceRelayConfig;
 import dev.serversync.relay.voice.VoiceRelayServer;
 
+import java.nio.file.Path;
 import java.util.concurrent.CountDownLatch;
 
 public final class RelayMain {
@@ -10,23 +12,78 @@ public final class RelayMain {
     }
 
     public static void main(String[] args) throws Exception {
-        RelayState state = new RelayState(System.getenv().getOrDefault("SERVERSYNC_RELAY_ID", "relay-local"));
-        System.out.println("ServerSync relay started: " + state.relayId());
-        System.out.println("Gameplay arbiter: in-memory prototype.");
-
-        VoiceRelayConfig voiceConfig;
+        Path configPath = Path.of("config.yml");
+        RelayConfig config;
         try {
-            voiceConfig = VoiceRelayConfig.fromEnvironment();
+            config = RelayConfig.loadOrCreate(configPath);
         } catch (Exception ex) {
-            System.err.println("Voice relay configuration error: " + ex.getMessage());
-            System.err.println("Cross-region voice relay did not start.");
+            System.err.println("Could not load config.yml: " + ex.getMessage());
             return;
         }
 
-        VoiceRelayServer voiceRelay = new VoiceRelayServer(voiceConfig);
-        voiceRelay.start();
-        Runtime.getRuntime().addShutdownHook(new Thread(voiceRelay::close, "serversync-relay-shutdown"));
-        System.out.println("Voice relay listening on " + voiceConfig.bindAddress().getHostAddress() + ":" + voiceConfig.port());
+        byte[] rootSecret;
+        try {
+            rootSecret = config.readRootSecret();
+        } catch (Exception ex) {
+            System.err.println("ServerSync relay security error: " + ex.getMessage());
+            System.err.println("The relay was not started because unauthenticated public access is not allowed.");
+            return;
+        }
+
+        RelayState state = new RelayState(config.relayId());
+        System.out.println("ServerSync relay starting: " + state.relayId() + " (" + config.region() + ")");
+        System.out.println("Security mode: " + config.security().mode() + " using " + config.security().secretFile());
+        if (!config.security().allowedNodeIds().isEmpty()) {
+            System.out.println("Allowed node IDs: " + String.join(", ", config.security().allowedNodeIds()));
+        }
+
+        GameplayRelayServer gameplayRelay = null;
+        VoiceRelayServer voiceRelay = null;
+        boolean started = false;
+
+        if (config.gameplay().enabled()) {
+            try {
+                gameplayRelay = new GameplayRelayServer(config.relayId(), config.gameplay(), config.security(), rootSecret);
+                gameplayRelay.start();
+                started = true;
+                System.out.println("Gameplay relay listening on TCP "
+                        + config.gameplay().bindAddress().getHostAddress() + ":" + config.gameplay().port());
+                System.out.println("Gameplay relay authentication and opaque node-to-node forwarding are enabled.");
+            } catch (Exception ex) {
+                System.err.println("Gameplay relay failed to start: " + ex.getMessage());
+            }
+        } else {
+            System.out.println("Gameplay relay is disabled in config.yml.");
+        }
+
+        if (config.voice().enabled()) {
+            try {
+                VoiceRelayConfig voiceConfig = VoiceRelayConfig.fromRelayConfig(config, rootSecret);
+                voiceRelay = new VoiceRelayServer(voiceConfig);
+                voiceRelay.start();
+                started = true;
+                System.out.println("Voice relay listening on UDP "
+                        + voiceConfig.bindAddress().getHostAddress() + ":" + voiceConfig.port());
+            } catch (Exception ex) {
+                System.err.println("Voice relay failed to start: " + ex.getMessage());
+            }
+        } else {
+            System.out.println("Voice relay is disabled in config.yml.");
+        }
+
+        if (!started) {
+            System.err.println("No relay service could be started. Check config.yml and port availability.");
+            return;
+        }
+
+        GameplayRelayServer gameplayForShutdown = gameplayRelay;
+        VoiceRelayServer voiceForShutdown = voiceRelay;
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            if (gameplayForShutdown != null) gameplayForShutdown.close();
+            if (voiceForShutdown != null) voiceForShutdown.close();
+        }, "serversync-relay-shutdown"));
+
+        System.out.println("ServerSync relay is ready.");
         new CountDownLatch(1).await();
     }
 }
