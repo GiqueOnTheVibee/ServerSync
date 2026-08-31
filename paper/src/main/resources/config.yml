@@ -2,6 +2,13 @@ node-id: ro-1
 region: eu
 shared-zone-radius: 96
 
+# ServerSync authentication root.
+# velocity-secret: reuse Velocity's forwarding.secret. Copy the same file to this server if needed.
+# dedicated-key: use a ServerSync-only secret file instead.
+security:
+  mode: velocity-secret
+  secret-file: forwarding.secret
+
 network:
   # direct-first: use node-to-node links normally; relay only when needed.
   # relay-only: force relay for debugging/compatibility.
@@ -17,12 +24,34 @@ network:
     candidate-hold-seconds: 10
     owner-cooldown-seconds: 30
 
-# Optional fallback/witness relay. It is not intended to be in the hot path normally.
-# 0.0.0.0 is intentionally used as a placeholder. Replace it before enabling.
-relay:
+# Optional relay pool. You can add as many relay nodes as needed.
+# 0.0.0.0 values below are placeholders for remote relay hosts; replace them before enabling.
+relays:
   enabled: false
-  host: 0.0.0.0
-  port: 25580
+  connect-timeout-millis: 3000
+  ping-interval-seconds: 5
+  nodes:
+    relay-1:
+      enabled: true
+      host: 0.0.0.0
+      region: unknown
+      gameplay-port: 25580
+      voice-port: 25581
+      capabilities:
+        gameplay: true
+        voice: true
+        witness: true
+
+    relay-2:
+      enabled: false
+      host: 0.0.0.0
+      region: unknown
+      gameplay-port: 25580
+      voice-port: 25581
+      capabilities:
+        gameplay: true
+        voice: true
+        witness: true
 
 redis:
   enabled: false
@@ -36,14 +65,9 @@ voice:
   normal-distance: 48.0
   whisper-distance: 24.0
   world-map: {}
-  # Current voice prototype can still use the optional relay. Direct voice fabric is planned.
   relay:
     enabled: false
-    # Placeholder address; replace it before enabling the voice relay.
-    host: 0.0.0.0
-    port: 25581
+    # Preferred relay is tried first; other voice-capable relays are fallback candidates.
+    preferred-relay: relay-1
     bind-port: 0
     heartbeat-seconds: 5
-    # Generate with: openssl rand -base64 32
-    # Put the same key in SERVERSYNC_VOICE_KEY on the relay.
-    shared-key-base64: ""
