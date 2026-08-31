@@ -1,12 +1,14 @@
 package dev.serversync.paper.listener;
 
+import dev.serversync.paper.ServerSyncPaperPlugin;
+import dev.serversync.paper.ghost.GhostSyncService;
+import dev.serversync.paper.zone.SharedZoneManager;
+import org.bukkit.Bukkit;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
-import dev.serversync.paper.ServerSyncPaperPlugin;
-import dev.serversync.paper.zone.SharedZoneManager;
 
 public final class PlayerStateListener implements Listener {
     private final ServerSyncPaperPlugin plugin;
@@ -19,25 +21,31 @@ public final class PlayerStateListener implements Listener {
 
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
-        plugin.getLogger().fine(() -> "Join " + event.getPlayer().getUniqueId() + " zone=" + zones.zoneFor(event.getPlayer()));
+        zones.zoneFor(event.getPlayer());
+        GhostSyncService ghosts = plugin.ghostSyncService();
+        if (ghosts == null) return;
+        ghosts.onViewerJoin(event.getPlayer());
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (event.getPlayer().isOnline()) ghosts.publishNow(event.getPlayer());
+        }, 1L);
     }
 
     @EventHandler
-    public void onMove(PlayerMoveEvent event) {
-        if (event.getTo() == null || event.getFrom().getBlockX() == event.getTo().getBlockX()
-                && event.getFrom().getBlockY() == event.getTo().getBlockY()
-                && event.getFrom().getBlockZ() == event.getTo().getBlockZ()) {
-            return;
-        }
-        String zone = zones.zoneFor(event.getPlayer());
-        if (zones.isShared(event.getPlayer())) {
-            // TODO publish compact ghost state over the real-time transport.
-            plugin.getLogger().finest(() -> "Ghost state update zone=" + zone);
+    public void onChangedWorld(PlayerChangedWorldEvent event) {
+        zones.zoneFor(event.getPlayer());
+        GhostSyncService ghosts = plugin.ghostSyncService();
+        if (ghosts != null) {
+            ghosts.onViewerJoin(event.getPlayer());
+            ghosts.publishNow(event.getPlayer());
         }
     }
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        // TODO publish ghost despawn / ownership release.
+        GhostSyncService ghosts = plugin.ghostSyncService();
+        if (ghosts != null) {
+            ghosts.publishRemove(event.getPlayer());
+            ghosts.onViewerQuit(event.getPlayer());
+        }
     }
 }
