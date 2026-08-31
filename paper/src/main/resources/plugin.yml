@@ -1,7 +1,7 @@
 name: ServerSync
 version: 0.1.0-SNAPSHOT
-main: world.marchoflegacy.serversync.paper.ServerSyncPaperPlugin
+main: dev.serversync.paper.ServerSyncPaperPlugin
 api-version: '1.21'
-authors: [MarchOfLegacy]
+authors: [ServerSync]
 description: Multi-region synchronization prototype for Paper/Purpur.
 softdepend: [voicechat]
