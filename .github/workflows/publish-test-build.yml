@@ -1,0 +1,46 @@
+name: Publish test build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-test-build.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Build all jars
+        run: mvn -B -ntp clean package
+      - name: Prepare release files
+        run: |
+          mkdir -p dist
+          cp paper/target/serversync-paper-0.1.0-SNAPSHOT.jar dist/ServerSync-Paper-0.1.0-test.jar
+          cp velocity/target/serversync-velocity-0.1.0-SNAPSHOT.jar dist/ServerSync-Velocity-0.1.0-test.jar
+          cp relay/target/serversync-relay-0.1.0-SNAPSHOT.jar dist/ServerSync-Relay-0.1.0-test.jar
+          cp common/target/serversync-common-0.1.0-SNAPSHOT.jar dist/ServerSync-Common-0.1.0-test.jar
+          sha256sum dist/*.jar > dist/SHA256SUMS.txt
+      - name: Create GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v0.1.0-test1 \
+            dist/ServerSync-Paper-0.1.0-test.jar \
+            dist/ServerSync-Velocity-0.1.0-test.jar \
+            dist/ServerSync-Relay-0.1.0-test.jar \
+            dist/ServerSync-Common-0.1.0-test.jar \
+            dist/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "ServerSync 0.1.0 test build" \
+            --prerelease \
+            --notes "Early test build. Paper plugin, Velocity plugin, standalone Relay and Common library. Java 21. Not production-ready yet."
