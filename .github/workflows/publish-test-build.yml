@@ -19,28 +19,26 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
-      - name: Build all jars
+      - name: Build deployable jars
         run: mvn -B -ntp clean package
-      - name: Prepare release files
+      - name: Prepare test2 files
         run: |
           mkdir -p dist
-          cp paper/target/serversync-paper-0.1.0-SNAPSHOT.jar dist/ServerSync-Paper-0.1.0-test.jar
-          cp velocity/target/serversync-velocity-0.1.0-SNAPSHOT.jar dist/ServerSync-Velocity-0.1.0-test.jar
-          cp relay/target/serversync-relay-0.1.0-SNAPSHOT.jar dist/ServerSync-Relay-0.1.0-test.jar
-          cp common/target/serversync-common-0.1.0-SNAPSHOT.jar dist/ServerSync-Common-0.1.0-test.jar
+          cp paper/target/serversync-paper-0.1.0-SNAPSHOT.jar dist/ServerSync-Paper-0.1.0-test2.jar
+          cp velocity/target/serversync-velocity-0.1.0-SNAPSHOT.jar dist/ServerSync-Velocity-0.1.0-test2.jar
+          cp relay/target/serversync-relay-0.1.0-SNAPSHOT.jar dist/ServerSync-Relay-0.1.0-test2.jar
           sha256sum dist/*.jar > dist/SHA256SUMS.txt
       - name: Create GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.1.0-test1 \
-            dist/ServerSync-Paper-0.1.0-test.jar \
-            dist/ServerSync-Velocity-0.1.0-test.jar \
-            dist/ServerSync-Relay-0.1.0-test.jar \
-            dist/ServerSync-Common-0.1.0-test.jar \
+          gh release create v0.1.0-test2 \
+            dist/ServerSync-Paper-0.1.0-test2.jar \
+            dist/ServerSync-Velocity-0.1.0-test2.jar \
+            dist/ServerSync-Relay-0.1.0-test2.jar \
             dist/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "ServerSync 0.1.0 test build" \
+            --title "ServerSync 0.1.0 test build 2" \
             --prerelease \
-            --notes "Early test build. Paper plugin, Velocity plugin, standalone Relay and Common library. Java 21. Not production-ready yet."
+            --notes "Private experimental test build. Includes Paper/Purpur plugin, Velocity plugin and standalone Java 21 relay. Adds direct-first/optional-relay architecture primitives, latency-aware Shared Zone owner scoring, route selection, updated configuration and bundled common code in the Velocity JAR. Not production-ready."
