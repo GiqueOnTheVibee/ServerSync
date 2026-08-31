@@ -33,6 +33,15 @@ ghosts:
   timeout-seconds: 10
   debug: false
 
+  # Keep remote players visible in the vanilla client TAB list.
+  tab-list:
+    enabled: true
+    # Supported placeholders: %player%, %node%
+    # Example with node shown: "[%node%] %player%"
+    format: "%player%"
+    # Until real remote player ping is included in the ghost protocol, this is the displayed TAB ping.
+    ping: 0
+
   # Test helper: lets you see a packet ghost of your own local player without a second server.
   # Keep disabled for normal multi-region use.
   debug-local-mirror:
