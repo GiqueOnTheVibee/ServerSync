@@ -1,26 +1,36 @@
 package dev.serversync.paper;
 
 import de.maxhenkel.voicechat.api.BukkitVoicechatService;
-import org.bukkit.Bukkit;
-import org.bukkit.plugin.java.JavaPlugin;
 import dev.serversync.common.network.NetworkMode;
-import dev.serversync.common.voice.VoiceProtocol;
+import dev.serversync.common.security.SharedSecretKeys;
 import dev.serversync.paper.listener.BlockIntentListener;
 import dev.serversync.paper.listener.PlayerStateListener;
+import dev.serversync.paper.network.RelayPoolManager;
 import dev.serversync.paper.voice.ServerSyncVoicechatPlugin;
 import dev.serversync.paper.voice.VoiceRelayClient;
 import dev.serversync.paper.zone.SharedZoneManager;
+import org.bukkit.Bukkit;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.plugin.java.JavaPlugin;
 
 import javax.crypto.SecretKey;
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.logging.Level;
 
 public final class ServerSyncPaperPlugin extends JavaPlugin {
     private SharedZoneManager sharedZoneManager;
+    private RelayPoolManager relayPoolManager;
     private VoiceRelayClient voiceRelayClient;
     private ServerSyncVoicechatPlugin voicechatPlugin;
     private NetworkMode networkMode = NetworkMode.DIRECT_FIRST;
+    private byte[] rootSecret;
 
     @Override
     public void onEnable() {
@@ -39,13 +49,48 @@ public final class ServerSyncPaperPlugin extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(new PlayerStateListener(this, sharedZoneManager), this);
         Bukkit.getPluginManager().registerEvents(new BlockIntentListener(this, sharedZoneManager), this);
 
+        boolean needsRelaySecret = getConfig().getBoolean("relays.enabled", false)
+                || getConfig().getBoolean("voice.relay.enabled", false);
+        if (needsRelaySecret) {
+            try {
+                this.rootSecret = loadRootSecret();
+            } catch (Exception ex) {
+                getLogger().severe("ServerSync relay security could not be initialized: " + ex.getMessage());
+                getLogger().severe("Relay connections are disabled; direct-first operation can continue.");
+            }
+        }
+
+        if (getConfig().getBoolean("relays.enabled", false) && rootSecret != null) {
+            this.relayPoolManager = new RelayPoolManager(nodeId, getConfig(), rootSecret, getLogger());
+            relayPoolManager.start();
+        }
+
         if (getConfig().getBoolean("voice.enabled", true)) {
             setupVoiceBridge(nodeId);
         }
+
         getLogger().info("ServerSync Paper started on node " + nodeId + " with network mode " + networkMode + ".");
-        if (networkMode == NetworkMode.DIRECT_FIRST && !getConfig().getBoolean("relay.enabled", false)) {
-            getLogger().info("Gameplay relay is optional/disabled; direct-first transport will be preferred as it is implemented.");
+        if (networkMode == NetworkMode.DIRECT_FIRST && !getConfig().getBoolean("relays.enabled", false)) {
+            getLogger().info("Relay pool is optional/disabled; direct-first transport remains preferred.");
         }
+    }
+
+    private byte[] loadRootSecret() throws Exception {
+        String mode = getConfig().getString("security.mode", "velocity-secret").trim().toLowerCase(Locale.ROOT);
+        if (!mode.equals("velocity-secret") && !mode.equals("dedicated-key")) {
+            throw new IllegalArgumentException("security.mode must be velocity-secret or dedicated-key");
+        }
+        String configuredPath = getConfig().getString("security.secret-file", "forwarding.secret").trim();
+        Path path = Path.of(configuredPath).toAbsolutePath().normalize();
+        if (Files.notExists(path)) {
+            throw new IllegalArgumentException("Secret file does not exist: " + path);
+        }
+        String value = Files.readString(path, StandardCharsets.UTF_8).trim();
+        if (value.length() < 16) {
+            throw new IllegalArgumentException("Secret file must contain at least 16 characters");
+        }
+        getLogger().info("ServerSync security mode " + mode + " using " + path + ".");
+        return value.getBytes(StandardCharsets.UTF_8);
     }
 
     private void setupVoiceBridge(String nodeId) {
@@ -59,38 +104,72 @@ public final class ServerSyncPaperPlugin extends JavaPlugin {
         service.registerPlugin(voicechatPlugin);
 
         if (!getConfig().getBoolean("voice.relay.enabled", false)) {
-            getLogger().info("ServerSync voice host integration enabled; optional cross-region voice relay is disabled.");
+            getLogger().info("ServerSync voice host integration enabled; cross-region voice relay is disabled.");
+            return;
+        }
+        if (rootSecret == null) {
+            getLogger().warning("Voice relay requested but the ServerSync root secret is unavailable.");
             return;
         }
 
-        String keyBase64 = getConfig().getString("voice.relay.shared-key-base64", "").trim();
-        if (keyBase64.isEmpty()) {
-            getLogger().warning("voice.relay.shared-key-base64 is empty. Cross-region voice relay is disabled.");
+        SecretKey key = SharedSecretKeys.deriveAesKey(rootSecret, "voice-relay-v1");
+        int bindPort = getConfig().getInt("voice.relay.bind-port", 0);
+        long heartbeatSeconds = Math.max(1L, getConfig().getLong("voice.relay.heartbeat-seconds", 5L));
+
+        List<String> relayIds = voiceRelayCandidates();
+        if (relayIds.isEmpty()) {
+            getLogger().warning("Voice relay is enabled but no relay with capabilities.voice=true is configured.");
             return;
         }
 
-        try {
-            SecretKey key = VoiceProtocol.keyFromBase64(keyBase64);
-            String host = getConfig().getString("voice.relay.host", "127.0.0.1");
-            int port = getConfig().getInt("voice.relay.port", 25581);
-            int bindPort = getConfig().getInt("voice.relay.bind-port", 0);
-            long heartbeatSeconds = Math.max(1L, getConfig().getLong("voice.relay.heartbeat-seconds", 5L));
-
-            this.voiceRelayClient = new VoiceRelayClient(getLogger(), nodeId, new InetSocketAddress(host, port),
-                    bindPort, key, Duration.ofSeconds(heartbeatSeconds), voicechatPlugin::onRemoteFrame);
-            voicechatPlugin.attachRelayClient(voiceRelayClient);
-            voiceRelayClient.start();
-            getLogger().info("Cross-region voice relay connected to " + host + ":" + port + ".");
-        } catch (Exception ex) {
-            getLogger().log(Level.SEVERE, "Failed to start ServerSync cross-region voice relay", ex);
+        for (String relayId : relayIds) {
+            String base = "relays.nodes." + relayId;
+            String host = getConfig().getString(base + ".host", "0.0.0.0").trim();
+            int port = getConfig().getInt(base + ".voice-port", 25581);
+            if (host.isEmpty() || host.equals("0.0.0.0")) {
+                getLogger().warning("Voice relay " + relayId + " still uses the 0.0.0.0 placeholder; skipped.");
+                continue;
+            }
+            try {
+                VoiceRelayClient client = new VoiceRelayClient(getLogger(), nodeId, new InetSocketAddress(host, port),
+                        bindPort, key, Duration.ofSeconds(heartbeatSeconds), voicechatPlugin::onRemoteFrame);
+                client.start();
+                this.voiceRelayClient = client;
+                voicechatPlugin.attachRelayClient(client);
+                getLogger().info("Cross-region voice relay connected through " + relayId + " at " + host + ':' + port + ".");
+                return;
+            } catch (Exception ex) {
+                getLogger().log(Level.WARNING, "Could not start voice relay through " + relayId, ex);
+            }
         }
+        getLogger().warning("No configured voice relay could be started.");
+    }
+
+    private List<String> voiceRelayCandidates() {
+        List<String> result = new ArrayList<>();
+        ConfigurationSection nodes = getConfig().getConfigurationSection("relays.nodes");
+        if (nodes == null) return result;
+
+        String preferred = getConfig().getString("voice.relay.preferred-relay", "").trim();
+        if (!preferred.isEmpty() && nodes.contains(preferred)
+                && getConfig().getBoolean("relays.nodes." + preferred + ".enabled", true)
+                && getConfig().getBoolean("relays.nodes." + preferred + ".capabilities.voice", true)) {
+            result.add(preferred);
+        }
+        for (String relayId : nodes.getKeys(false)) {
+            if (result.contains(relayId)) continue;
+            String base = "relays.nodes." + relayId;
+            if (!getConfig().getBoolean(base + ".enabled", true)) continue;
+            if (!getConfig().getBoolean(base + ".capabilities.voice", true)) continue;
+            result.add(relayId);
+        }
+        return result;
     }
 
     @Override
     public void onDisable() {
-        if (voiceRelayClient != null) {
-            voiceRelayClient.close();
-        }
+        if (voiceRelayClient != null) voiceRelayClient.close();
+        if (relayPoolManager != null) relayPoolManager.close();
     }
 
     public SharedZoneManager sharedZoneManager() {
@@ -99,5 +178,9 @@ public final class ServerSyncPaperPlugin extends JavaPlugin {
 
     public NetworkMode networkMode() {
         return networkMode;
+    }
+
+    public RelayPoolManager relayPoolManager() {
+        return relayPoolManager;
     }
 }
