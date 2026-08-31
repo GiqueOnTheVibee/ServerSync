@@ -21,24 +21,29 @@ jobs:
           cache: maven
       - name: Build deployable jars
         run: mvn -B -ntp clean package
-      - name: Prepare test2 files
+      - name: Prepare test3 files
         run: |
-          mkdir -p dist
-          cp paper/target/serversync-paper-0.1.0-SNAPSHOT.jar dist/ServerSync-Paper-0.1.0-test2.jar
-          cp velocity/target/serversync-velocity-0.1.0-SNAPSHOT.jar dist/ServerSync-Velocity-0.1.0-test2.jar
-          cp relay/target/serversync-relay-0.1.0-SNAPSHOT.jar dist/ServerSync-Relay-0.1.0-test2.jar
-          sha256sum dist/*.jar > dist/SHA256SUMS.txt
+          mkdir -p dist relay-package
+          cp paper/target/serversync-paper-0.1.0-SNAPSHOT.jar dist/ServerSync-Paper-0.1.0-test3.jar
+          cp velocity/target/serversync-velocity-0.1.0-SNAPSHOT.jar dist/ServerSync-Velocity-0.1.0-test3.jar
+          cp relay/target/serversync-relay-0.1.0-SNAPSHOT.jar dist/ServerSync-Relay-0.1.0-test3.jar
+          cp dist/ServerSync-Relay-0.1.0-test3.jar relay-package/ServerSync-Relay-0.1.0-test3.jar
+          cp relay/config.yml relay-package/config.yml
+          cp relay/start.bat relay-package/start.bat
+          (cd relay-package && zip -q -r ../dist/ServerSync-Relay-0.1.0-test3.zip .)
+          sha256sum dist/*.jar dist/*.zip > dist/SHA256SUMS.txt
       - name: Create GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create v0.1.0-test2 \
-            dist/ServerSync-Paper-0.1.0-test2.jar \
-            dist/ServerSync-Velocity-0.1.0-test2.jar \
-            dist/ServerSync-Relay-0.1.0-test2.jar \
+          gh release create v0.1.0-test3 \
+            dist/ServerSync-Paper-0.1.0-test3.jar \
+            dist/ServerSync-Velocity-0.1.0-test3.jar \
+            dist/ServerSync-Relay-0.1.0-test3.jar \
+            dist/ServerSync-Relay-0.1.0-test3.zip \
             dist/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "ServerSync 0.1.0 test build 2" \
+            --title "ServerSync 0.1.0 test build 3" \
             --prerelease \
-            --notes "Private experimental test build. Includes Paper/Purpur plugin, Velocity plugin and standalone Java 21 relay. Adds direct-first/optional-relay architecture primitives, latency-aware Shared Zone owner scoring, route selection, updated configuration and bundled common code in the Velocity JAR. Not production-ready."
+            --notes "Private experimental test build. Adds standalone relay config.yml startup, normal Windows start.bat, TCP 25580 authenticated gameplay/control relay, UDP 25581 encrypted voice relay, Velocity-forwarding-secret based key derivation, replay-protected HMAC authentication, optional node allowlists, and a Paper multi-relay connection pool with RTT probes. Includes a relay ZIP with the JAR, config.yml and start.bat. Not production-ready."
