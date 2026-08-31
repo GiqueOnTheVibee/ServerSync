@@ -24,6 +24,22 @@ network:
     candidate-hold-seconds: 10
     owner-cooldown-seconds: 30
 
+# Packet-level remote player ghosts. PacketEvents 2.13.0 is required for rendering.
+ghosts:
+  enabled: true
+  # 2 ticks = 10 player-state updates per second. Lower is smoother but sends more traffic.
+  publish-interval-ticks: 2
+  # Remove a remote ghost if its node stops sending state for this long.
+  timeout-seconds: 10
+  debug: false
+
+  # Test helper: lets you see a packet ghost of your own local player without a second server.
+  # Keep disabled for normal multi-region use.
+  debug-local-mirror:
+    enabled: false
+    offset-x: 2.0
+    offset-z: 0.0
+
 # Optional relay pool. You can add as many relay nodes as needed.
 # 0.0.0.0 values below are placeholders for remote relay hosts; replace them before enabling.
 relays:
