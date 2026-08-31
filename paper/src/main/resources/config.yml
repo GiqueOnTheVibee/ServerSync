@@ -18,14 +18,16 @@ network:
     owner-cooldown-seconds: 30
 
 # Optional fallback/witness relay. It is not intended to be in the hot path normally.
+# 0.0.0.0 is intentionally used as a placeholder. Replace it before enabling.
 relay:
   enabled: false
-  host: 127.0.0.1
+  host: 0.0.0.0
   port: 25580
 
 redis:
   enabled: false
-  uri: redis://127.0.0.1:6379
+  # Placeholder address; replace it before enabling Redis.
+  uri: redis://0.0.0.0:6379
 
 voice:
   enabled: true
@@ -37,7 +39,8 @@ voice:
   # Current voice prototype can still use the optional relay. Direct voice fabric is planned.
   relay:
     enabled: false
-    host: 127.0.0.1
+    # Placeholder address; replace it before enabling the voice relay.
+    host: 0.0.0.0
     port: 25581
     bind-port: 0
     heartbeat-seconds: 5
