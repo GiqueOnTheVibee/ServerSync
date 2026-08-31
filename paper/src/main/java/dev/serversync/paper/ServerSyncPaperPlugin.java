@@ -3,6 +3,7 @@ package dev.serversync.paper;
 import de.maxhenkel.voicechat.api.BukkitVoicechatService;
 import dev.serversync.common.network.NetworkMode;
 import dev.serversync.common.security.SharedSecretKeys;
+import dev.serversync.paper.ghost.GhostSyncService;
 import dev.serversync.paper.listener.BlockIntentListener;
 import dev.serversync.paper.listener.PlayerStateListener;
 import dev.serversync.paper.network.RelayPoolManager;
@@ -27,6 +28,7 @@ import java.util.logging.Level;
 public final class ServerSyncPaperPlugin extends JavaPlugin {
     private SharedZoneManager sharedZoneManager;
     private RelayPoolManager relayPoolManager;
+    private GhostSyncService ghostSyncService;
     private VoiceRelayClient voiceRelayClient;
     private ServerSyncVoicechatPlugin voicechatPlugin;
     private NetworkMode networkMode = NetworkMode.DIRECT_FIRST;
@@ -61,9 +63,27 @@ public final class ServerSyncPaperPlugin extends JavaPlugin {
         }
 
         if (getConfig().getBoolean("relays.enabled", false) && rootSecret != null) {
-            this.relayPoolManager = new RelayPoolManager(nodeId, getConfig(), rootSecret, getLogger());
-            relayPoolManager.start();
+            this.relayPoolManager = new RelayPoolManager(nodeId, getConfig(), rootSecret, getLogger(),
+                    (sourceNodeId, payload) -> {
+                        GhostSyncService ghosts = this.ghostSyncService;
+                        if (ghosts != null) ghosts.onRelayData(sourceNodeId, payload);
+                    });
         }
+
+        if (getConfig().getBoolean("ghosts.enabled", true)) {
+            if (Bukkit.getPluginManager().isPluginEnabled("packetevents")) {
+                try {
+                    this.ghostSyncService = new GhostSyncService(this, nodeId, relayPoolManager);
+                } catch (Throwable ex) {
+                    getLogger().log(Level.SEVERE, "Could not initialize PacketEvents ghost rendering", ex);
+                }
+            } else {
+                getLogger().warning("Ghost players are enabled but PacketEvents is not installed/enabled. Install PacketEvents 2.13.0 to render player ghosts.");
+            }
+        }
+
+        if (relayPoolManager != null) relayPoolManager.start();
+        if (ghostSyncService != null) ghostSyncService.start();
 
         if (getConfig().getBoolean("voice.enabled", true)) {
             setupVoiceBridge(nodeId);
@@ -169,6 +189,7 @@ public final class ServerSyncPaperPlugin extends JavaPlugin {
     @Override
     public void onDisable() {
         if (voiceRelayClient != null) voiceRelayClient.close();
+        if (ghostSyncService != null) ghostSyncService.close();
         if (relayPoolManager != null) relayPoolManager.close();
     }
 
@@ -182,5 +203,9 @@ public final class ServerSyncPaperPlugin extends JavaPlugin {
 
     public RelayPoolManager relayPoolManager() {
         return relayPoolManager;
+    }
+
+    public GhostSyncService ghostSyncService() {
+        return ghostSyncService;
     }
 }
