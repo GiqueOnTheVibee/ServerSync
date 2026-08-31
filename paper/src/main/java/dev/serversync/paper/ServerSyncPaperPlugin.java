@@ -3,6 +3,7 @@ package dev.serversync.paper;
 import de.maxhenkel.voicechat.api.BukkitVoicechatService;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
+import dev.serversync.common.network.NetworkMode;
 import dev.serversync.common.voice.VoiceProtocol;
 import dev.serversync.paper.listener.BlockIntentListener;
 import dev.serversync.paper.listener.PlayerStateListener;
@@ -19,12 +20,20 @@ public final class ServerSyncPaperPlugin extends JavaPlugin {
     private SharedZoneManager sharedZoneManager;
     private VoiceRelayClient voiceRelayClient;
     private ServerSyncVoicechatPlugin voicechatPlugin;
+    private NetworkMode networkMode = NetworkMode.DIRECT_FIRST;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
         String nodeId = getConfig().getString("node-id", "unknown-node");
         int radius = getConfig().getInt("shared-zone-radius", 96);
+
+        try {
+            this.networkMode = NetworkMode.fromConfig(getConfig().getString("network.mode", "direct-first"));
+        } catch (IllegalArgumentException ex) {
+            getLogger().warning(ex.getMessage() + "; falling back to DIRECT_FIRST.");
+            this.networkMode = NetworkMode.DIRECT_FIRST;
+        }
 
         this.sharedZoneManager = new SharedZoneManager(nodeId, radius);
         Bukkit.getPluginManager().registerEvents(new PlayerStateListener(this, sharedZoneManager), this);
@@ -33,7 +42,10 @@ public final class ServerSyncPaperPlugin extends JavaPlugin {
         if (getConfig().getBoolean("voice.enabled", true)) {
             setupVoiceBridge(nodeId);
         }
-        getLogger().info("ServerSync Paper started on node " + nodeId + ".");
+        getLogger().info("ServerSync Paper started on node " + nodeId + " with network mode " + networkMode + ".");
+        if (networkMode == NetworkMode.DIRECT_FIRST && !getConfig().getBoolean("relay.enabled", false)) {
+            getLogger().info("Gameplay relay is optional/disabled; direct-first transport will be preferred as it is implemented.");
+        }
     }
 
     private void setupVoiceBridge(String nodeId) {
@@ -46,8 +58,8 @@ public final class ServerSyncPaperPlugin extends JavaPlugin {
         this.voicechatPlugin = new ServerSyncVoicechatPlugin(this, nodeId);
         service.registerPlugin(voicechatPlugin);
 
-        if (!getConfig().getBoolean("voice.relay.enabled", true)) {
-            getLogger().info("ServerSync voice host integration enabled; cross-region voice relay is disabled.");
+        if (!getConfig().getBoolean("voice.relay.enabled", false)) {
+            getLogger().info("ServerSync voice host integration enabled; optional cross-region voice relay is disabled.");
             return;
         }
 
@@ -83,5 +95,9 @@ public final class ServerSyncPaperPlugin extends JavaPlugin {
 
     public SharedZoneManager sharedZoneManager() {
         return sharedZoneManager;
+    }
+
+    public NetworkMode networkMode() {
+        return networkMode;
     }
 }
