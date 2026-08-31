@@ -1,0 +1,9 @@
+node-id: ro-1
+region: eu
+shared-zone-radius: 96
+relay:
+  host: 127.0.0.1
+  port: 25580
+redis:
+  enabled: false
+  uri: redis://127.0.0.1:6379
