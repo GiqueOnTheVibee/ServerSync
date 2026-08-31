@@ -7,8 +7,8 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 import java.util.logging.Logger;
 
@@ -18,7 +18,7 @@ public final class RelayPoolManager implements AutoCloseable {
     private final byte[] rootSecret;
     private final Logger logger;
     private final BiConsumer<String, byte[]> dataHandler;
-    private final Map<String, RelayClient> clients = new LinkedHashMap<>();
+    private final Map<String, RelayClient> clients = new ConcurrentHashMap<>();
 
     public RelayPoolManager(String nodeId, FileConfiguration config, byte[] rootSecret, Logger logger,
                             BiConsumer<String, byte[]> dataHandler) {
