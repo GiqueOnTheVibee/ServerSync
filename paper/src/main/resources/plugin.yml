@@ -5,3 +5,21 @@ api-version: '1.21'
 authors: [ServerSync]
 description: Multi-region synchronization prototype for Paper/Purpur.
 softdepend: [voicechat, packetevents]
+
+commands:
+  sstp:
+    description: Teleport to a remote ServerSync ghost player.
+    usage: /sstp <player[@node]>
+    permission: serversync.ghost.tp
+  ssghosts:
+    description: List currently known remote ServerSync ghost players.
+    usage: /ssghosts
+    permission: serversync.ghost.list
+
+permissions:
+  serversync.ghost.tp:
+    description: Allows teleporting to a remote ServerSync ghost player.
+    default: op
+  serversync.ghost.list:
+    description: Allows listing remote ServerSync ghost players.
+    default: op
