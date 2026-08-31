@@ -1,6 +1,7 @@
 package dev.serversync.paper;
 
 import dev.serversync.common.network.NetworkMode;
+import dev.serversync.paper.command.GhostAdminCommand;
 import dev.serversync.paper.ghost.GhostSyncService;
 import dev.serversync.paper.listener.BlockIntentListener;
 import dev.serversync.paper.listener.PlayerStateListener;
@@ -8,6 +9,7 @@ import dev.serversync.paper.network.RelayPoolManager;
 import dev.serversync.paper.voice.VoiceBridgeBootstrap;
 import dev.serversync.paper.zone.SharedZoneManager;
 import org.bukkit.Bukkit;
+import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.nio.charset.StandardCharsets;
@@ -72,6 +74,8 @@ public final class ServerSyncPaperPlugin extends JavaPlugin {
             }
         }
 
+        registerGhostCommands();
+
         if (relayPoolManager != null) relayPoolManager.start();
         if (ghostSyncService != null) ghostSyncService.start();
 
@@ -91,6 +95,22 @@ public final class ServerSyncPaperPlugin extends JavaPlugin {
         if (networkMode == NetworkMode.DIRECT_FIRST && !getConfig().getBoolean("relays.enabled", false)) {
             getLogger().info("Relay pool is optional/disabled; direct-first transport remains preferred.");
         }
+    }
+
+    private void registerGhostCommands() {
+        GhostAdminCommand command = new GhostAdminCommand(this);
+        registerCommand("sstp", command);
+        registerCommand("ssghosts", command);
+    }
+
+    private void registerCommand(String name, GhostAdminCommand handler) {
+        PluginCommand command = getCommand(name);
+        if (command == null) {
+            getLogger().warning("Command /" + name + " is missing from plugin.yml.");
+            return;
+        }
+        command.setExecutor(handler);
+        command.setTabCompleter(handler);
     }
 
     private byte[] loadRootSecret() throws Exception {
