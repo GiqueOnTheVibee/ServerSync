@@ -1,5 +1,9 @@
 package dev.serversync.relay.network;
 
+import dev.serversync.common.protocol.WorldBlockCommit;
+import dev.serversync.common.protocol.WorldBlockIntent;
+import dev.serversync.common.protocol.WorldMessage;
+import dev.serversync.common.protocol.WorldProtocol;
 import dev.serversync.common.security.SharedSecretKeys;
 import dev.serversync.relay.RelayConfig;
 
@@ -13,18 +17,20 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
-import java.time.Duration;
 import java.util.Base64;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 public final class GameplayRelayServer implements AutoCloseable {
     private static final int PROTOCOL_VERSION = 1;
     private static final SecureRandom RANDOM = new SecureRandom();
+    private static final long WORLD_REQUEST_CACHE_MILLIS = 10 * 60 * 1000L;
 
     private final String relayId;
     private final RelayConfig.GameplayConfig config;
@@ -32,6 +38,8 @@ public final class GameplayRelayServer implements AutoCloseable {
     private final byte[] authKey;
     private final Map<String, ClientSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, Long> seenNonces = new ConcurrentHashMap<>();
+    private final Map<String, AtomicLong> zoneSequences = new ConcurrentHashMap<>();
+    private final Map<UUID, CommittedWorldRequest> worldRequests = new ConcurrentHashMap<>();
     private final Semaphore connectionSlots;
     private final ExecutorService clients = Executors.newVirtualThreadPerTaskExecutor();
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -62,6 +70,10 @@ public final class GameplayRelayServer implements AutoCloseable {
 
     public int activeNodes() {
         return sessions.size();
+    }
+
+    public int trackedWorldZones() {
+        return zoneSequences.size();
     }
 
     private void acceptLoop() {
@@ -186,7 +198,10 @@ public final class GameplayRelayServer implements AutoCloseable {
             }
             case "SEND" -> {
                 if (parts.length != 3) throw new IOException("SEND requires target node and payload");
-                validatePayload(parts[2]);
+                byte[] decoded = decodePayload(parts[2]);
+                if (WorldProtocol.looksLikeWorldMessage(decoded)) {
+                    throw new IOException("World mutations must use relay-authoritative BROADCAST");
+                }
                 ClientSession target = sessions.get(parts[1]);
                 if (target == null) {
                     source.send("UNAVAILABLE\t" + parts[1]);
@@ -196,12 +211,12 @@ public final class GameplayRelayServer implements AutoCloseable {
             }
             case "BROADCAST" -> {
                 if (parts.length < 2) throw new IOException("BROADCAST requires payload");
-                String payload = parts.length == 2 ? parts[1] : parts[2];
-                validatePayload(payload);
-                for (ClientSession target : sessions.values()) {
-                    if (!target.nodeId().equals(source.nodeId())) {
-                        target.send("DATA\t" + source.nodeId() + '\t' + payload);
-                    }
+                String encoded = parts.length == 2 ? parts[1] : parts[2];
+                byte[] decoded = decodePayload(encoded);
+                if (WorldProtocol.looksLikeWorldMessage(decoded)) {
+                    handleWorldMessage(source, decoded);
+                } else {
+                    broadcastData(source.nodeId(), encoded, false);
                 }
             }
             case "QUIT" -> source.close();
@@ -209,12 +224,75 @@ public final class GameplayRelayServer implements AutoCloseable {
         }
     }
 
-    private void validatePayload(String encoded) throws IOException {
+    private void handleWorldMessage(ClientSession source, byte[] payload) throws IOException {
+        WorldMessage message = WorldProtocol.decode(payload);
+        if (!(message instanceof WorldBlockIntent intent)) {
+            throw new IOException("Clients may only submit world block intents; commits are relay-generated");
+        }
+        if (!intent.sourceNodeId().equals(source.nodeId())) {
+            throw new IOException("World intent source node does not match authenticated node");
+        }
+        sequenceWorldIntent(intent);
+    }
+
+    private synchronized void sequenceWorldIntent(WorldBlockIntent intent) throws IOException {
+        long now = System.currentTimeMillis();
+        expireWorldRequests(now);
+
+        CommittedWorldRequest previous = worldRequests.get(intent.requestId());
+        WorldBlockCommit commit;
+        if (previous != null) {
+            commit = previous.commit();
+        } else {
+            long sequence = zoneSequences.computeIfAbsent(intent.zoneId(), ignored -> new AtomicLong()).incrementAndGet();
+            long epoch = 1L; // Persistent ownership epochs arrive in the next world-sync stage.
+            commit = new WorldBlockCommit(
+                    intent.requestId(),
+                    intent.playerId(),
+                    intent.sourceNodeId(),
+                    relayId,
+                    intent.world(),
+                    intent.zoneId(),
+                    epoch,
+                    sequence,
+                    intent.x(),
+                    intent.y(),
+                    intent.z(),
+                    intent.oldBlockData(),
+                    intent.newBlockData(),
+                    now
+            );
+            worldRequests.put(intent.requestId(), new CommittedWorldRequest(commit, now));
+        }
+
+        byte[] commitBytes = WorldProtocol.encode(commit);
+        if (commitBytes.length > config.maxPayloadBytes()) {
+            throw new IOException("Relay-generated world commit exceeds max payload size");
+        }
+        String encodedCommit = Base64.getEncoder().encodeToString(commitBytes);
+        // Include the source node as an acknowledgement. Applying the same BlockData is idempotent.
+        broadcastData(intent.sourceNodeId(), encodedCommit, true);
+    }
+
+    private void broadcastData(String sourceNodeId, String encodedPayload, boolean includeSource) {
+        for (ClientSession target : sessions.values()) {
+            if (!includeSource && target.nodeId().equals(sourceNodeId)) continue;
+            try {
+                target.send("DATA\t" + sourceNodeId + '\t' + encodedPayload);
+            } catch (IOException ex) {
+                target.close();
+                sessions.remove(target.nodeId(), target);
+            }
+        }
+    }
+
+    private byte[] decodePayload(String encoded) throws IOException {
         try {
             byte[] decoded = Base64.getDecoder().decode(encoded);
             if (decoded.length > config.maxPayloadBytes()) {
                 throw new IOException("Relay payload exceeds " + config.maxPayloadBytes() + " bytes");
             }
+            return decoded;
         } catch (IllegalArgumentException ex) {
             throw new IOException("Relay payload is not valid base64");
         }
@@ -223,6 +301,11 @@ public final class GameplayRelayServer implements AutoCloseable {
     private void expireNonces(long nowMillis) {
         long cutoff = nowMillis - security.replayCache().toMillis();
         seenNonces.entrySet().removeIf(entry -> entry.getValue() < cutoff);
+    }
+
+    private void expireWorldRequests(long nowMillis) {
+        long cutoff = nowMillis - WORLD_REQUEST_CACHE_MILLIS;
+        worldRequests.entrySet().removeIf(entry -> entry.getValue().committedAtMillis() < cutoff);
     }
 
     private static String readLineLimited(BufferedReader reader, int maxChars) throws IOException {
@@ -253,11 +336,16 @@ public final class GameplayRelayServer implements AutoCloseable {
         for (ClientSession session : sessions.values()) session.close();
         sessions.clear();
         seenNonces.clear();
+        zoneSequences.clear();
+        worldRequests.clear();
         clients.shutdownNow();
         if (acceptThread != null) acceptThread.interrupt();
     }
 
     private record AuthHello(String nodeId) {
+    }
+
+    private record CommittedWorldRequest(WorldBlockCommit commit, long committedAtMillis) {
     }
 
     private record ClientSession(String nodeId, Socket socket, BufferedWriter writer) {
