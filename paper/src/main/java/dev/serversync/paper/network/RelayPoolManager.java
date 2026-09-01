@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
@@ -90,6 +91,50 @@ public final class RelayPoolManager implements AutoCloseable {
             }
         }
         return sent;
+    }
+
+    /**
+     * Sends a mutation that must be sequenced by exactly one relay. Multiple relays must never independently
+     * commit the same world intent. The configured preferred relay wins; otherwise the first connected relay ID
+     * in lexical order is used as a deterministic fallback.
+     *
+     * @return the relay ID used, or null when no gameplay relay is connected.
+     */
+    public String sendAuthoritative(byte[] payload, String preferredRelayId) {
+        RelayClient selected = null;
+        String selectedId = null;
+
+        if (preferredRelayId != null && !preferredRelayId.isBlank()) {
+            RelayClient preferred = clients.get(preferredRelayId);
+            if (preferred != null && preferred.isConnected()) {
+                selected = preferred;
+                selectedId = preferredRelayId;
+            }
+        }
+
+        if (selected == null) {
+            Map.Entry<String, RelayClient> fallback = clients.entrySet().stream()
+                    .filter(entry -> entry.getValue().isConnected())
+                    .min(Comparator.comparing(Map.Entry::getKey))
+                    .orElse(null);
+            if (fallback != null) {
+                selectedId = fallback.getKey();
+                selected = fallback.getValue();
+            }
+        }
+
+        if (selected == null) return null;
+        try {
+            selected.broadcast(payload);
+            return selectedId;
+        } catch (IOException ex) {
+            logger.warning("Could not send authoritative payload through relay " + selectedId + ": " + ex.getMessage());
+            return null;
+        }
+    }
+
+    public boolean hasConnectedRelay() {
+        return clients.values().stream().anyMatch(RelayClient::isConnected);
     }
 
     public Map<String, RelayClient> clients() {
