@@ -15,6 +15,10 @@ commands:
     description: List currently known remote ServerSync ghost players.
     usage: /ssghosts
     permission: serversync.ghost.list
+  ssworldstatus:
+    description: Show relay-authoritative world synchronization status.
+    usage: /ssworldstatus
+    permission: serversync.world.status
 
 permissions:
   serversync.ghost.tp:
@@ -22,4 +26,7 @@ permissions:
     default: op
   serversync.ghost.list:
     description: Allows listing remote ServerSync ghost players.
+    default: op
+  serversync.world.status:
+    description: Allows viewing ServerSync world synchronization status.
     default: op
