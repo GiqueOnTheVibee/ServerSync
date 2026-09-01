@@ -49,6 +49,24 @@ ghosts:
     offset-x: 2.0
     offset-z: 0.0
 
+# First world synchronization stage.
+# IMPORTANT: all Paper nodes must start from the same world snapshot before this is enabled.
+# Block break/place changes are sent to exactly one authoritative relay. The relay assigns a per-zone
+# sequence number and sends the ordered commit to every connected Paper node.
+world-sync:
+  enabled: false
+  authoritative-relay: relay-1
+  # Prevent new block changes when no authoritative relay is connected. Recommended once world-sync is enabled.
+  fail-closed-when-relay-unavailable: true
+  debug: false
+  blocks:
+    break: true
+    place: true
+    # Keep false for the MVP so applying a remote block does not start a second local physics chain.
+    apply-physics: false
+  # Remote world name -> local world name. Empty means identical world names on all nodes.
+  world-map: {}
+
 # Optional relay pool. You can add as many relay nodes as needed.
 # 0.0.0.0 values below are placeholders for remote relay hosts; replace them before enabling.
 relays:
