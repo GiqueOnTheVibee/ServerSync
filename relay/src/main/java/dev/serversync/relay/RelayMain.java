@@ -48,7 +48,8 @@ public final class RelayMain {
                 started = true;
                 System.out.println("Gameplay relay listening on TCP "
                         + config.gameplay().bindAddress().getHostAddress() + ":" + config.gameplay().port());
-                System.out.println("Gameplay relay authentication and opaque node-to-node forwarding are enabled.");
+                System.out.println("Gameplay relay authentication and node-to-node forwarding are enabled.");
+                System.out.println("World block sequencer: enabled (per-zone in-memory sequence/commit MVP).");
             } catch (Exception ex) {
                 System.err.println("Gameplay relay failed to start: " + ex.getMessage());
             }
