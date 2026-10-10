@@ -1,7 +1,6 @@
 # ServerSync
-
+# STIILL IN BETAA
 Private experimental multi-region Minecraft synchronization project for Paper/Purpur + Velocity.
-
 The target is one logical Minecraft world across multiple regional game nodes while keeping players connected to a nearby backend. ServerSync is designed so a relay is optional: nodes should communicate directly whenever possible and only fall back to a relay/witness when a direct path is unavailable or materially worse.
 
 > This repository is still a prototype, not a production-ready anti-dupe system. Cross-region consistency, entity ownership and plugin-driven mutations still need deterministic testing before live deployment.
